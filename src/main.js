@@ -539,6 +539,9 @@ function selectAnswer(index) {
     handleWrong(q, false);
   }
 
+  app.querySelectorAll('[data-hint]').forEach((btn) => {
+    btn.disabled = true;
+  });
   showFeedback(isCorrect, q, false);
   persistGame();
 }
@@ -697,7 +700,7 @@ function handleTimeout() {
   if (answeringLocked) return;
   answeringLocked = true;
   const q = game.questions[game.currentIndex];
-  const elapsed = TIMER_SECONDS;
+  const elapsed = (Date.now() - questionStartedAt) / 1000;
   game.answerTimes.push(elapsed);
 
   app.querySelectorAll('.answer-btn').forEach((btn) => {
@@ -706,6 +709,9 @@ function handleTimeout() {
   });
 
   app.querySelector('#q-card')?.classList.add('flash-bad');
+  app.querySelectorAll('[data-hint]').forEach((btn) => {
+    btn.disabled = true;
+  });
   handleWrong(q, true);
   showFeedback(false, q, true);
   persistGame();
