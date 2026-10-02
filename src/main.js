@@ -346,7 +346,8 @@ function renderQuestion() {
   game.paused = false;
 
   const q = game.questions[game.currentIndex];
-  const progress = ((game.currentIndex) / game.questions.length) * 100;
+  const progress = ((game.currentIndex + 1) / game.questions.length) * 100;
+  const questionTime = q.type === 'speed' ? 12 : TIMER_SECONDS;
   const livesHtml = settings.lives
     ? `<div class="stat-pill lives">${'❤️'.repeat(Math.max(0, game.lives))}${'🖤'.repeat(Math.max(0, 3 - game.lives))}</div>`
     : '';
@@ -358,7 +359,7 @@ function renderQuestion() {
           <div class="stat-pill">🏆 ${game.score}</div>
           ${livesHtml}
         </div>
-        <div class="stat-pill timer-pill" id="timer-display">⏱ ${settings.timer ? TIMER_SECONDS : '∞'}</div>
+        <div class="stat-pill timer-pill" id="timer-display">⏱ ${settings.timer ? questionTime : '∞'}</div>
         <div class="hud-right">
           <button class="btn btn-ghost btn-sm" data-action="pause">⏸</button>
           <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
@@ -412,7 +413,7 @@ function renderQuestion() {
 
   questionStartedAt = Date.now();
   if (settings.timer) {
-    timerLeft = TIMER_SECONDS;
+    timerLeft = questionTime;
     updateTimerUI();
     timerId = setInterval(onTimerTick, 1000);
   }
