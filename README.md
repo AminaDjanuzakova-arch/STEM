@@ -51,4 +51,17 @@ public/
 
 HTML · CSS · JavaScript · Vite  
 
-Без серверной части и внешних платных сервисов. Всё работает локально в браузере.
+Без обязательной серверной части. Рекорды сохраняются в `localStorage`.  
+Иллюстрации подгружаются с Unsplash CDN (с emoji-fallback).
+
+### Опционально: Supabase
+
+Скопируй `.env.example` → `.env` и укажи:
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+Создай таблицу `bio_quiz_scores` (`name`, `score`, `accuracy`, `difficulty`, `max_streak`, `created_at`).  
+Без ключей квиз работает как раньше — только локально.

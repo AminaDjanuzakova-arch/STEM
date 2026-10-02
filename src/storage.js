@@ -12,7 +12,7 @@ const KEYS = {
 
 const DEFAULT_SETTINGS = {
   sound: true,
-  darkTheme: true,
+  darkTheme: false,
   timer: true,
   lives: true,
   animations: true,

@@ -27,13 +27,27 @@ import {
   playCombo,
   unlockAudio,
 } from './audio.js';
+import {
+  getCategoryMedia,
+  getQuestionVisual,
+  renderIllustrationHtml,
+  bindIllustrationFade,
+} from './media.js';
+import { isSupabaseEnabled, saveScoreToSupabase, fetchLeaderboardFromSupabase } from './supabase.js';
 
 const QUESTIONS_PER_GAME = 15;
 const TIMER_SECONDS = 20;
 const LETTERS = ['A', 'B', 'C', 'D'];
+const TIMER_CIRCUMFERENCE = 100.53; // 2πr for r=16
 
 const app = document.getElementById('app');
 const confettiContainer = document.getElementById('confetti-container');
+const fxLayer = document.getElementById('fx-layer');
+
+/** Предыдущее значение прогресса для плавной анимации полосы */
+let lastProgressWidth = 0;
+/** Полная длительность таймера текущего вопроса */
+let questionTimeTotal = TIMER_SECONDS;
 
 /** @type {ReturnType<typeof getSettings>} */
 let settings = getSettings();
@@ -178,14 +192,19 @@ function createGameState({ difficulty, category }) {
 function renderHome() {
   stopTimer();
   pendingScreen = null;
+  lastProgressWidth = 0;
   app.innerHTML = `
-    <section class="screen home glass">
-      <div class="logo-mark" aria-hidden="true">🧬</div>
+    <section class="screen home glass kids-card">
+      <div class="logo-mark bounce-soft" aria-hidden="true">🧬</div>
       <div class="brand">BIO QUIZ</div>
+      <p class="kids-tagline">Путешествие в мир биологии</p>
       <h1>Проверь свои знания о живом мире!</h1>
       <p class="subtitle">От клетки до человека — сколько ты знаешь о биологии?</p>
+      <div class="home-mascots" aria-hidden="true">
+        <span>🦊</span><span>🌿</span><span>🔬</span><span>🦋</span><span>🐠</span>
+      </div>
       <div class="home-actions">
-        <button class="btn btn-primary" data-action="start">▶ НАЧАТЬ КВИЗ</button>
+        <button class="btn btn-primary btn-pulse" data-action="start">▶ НАЧАТЬ КВИЗ</button>
         <button class="btn btn-secondary" data-action="settings">⚙ НАСТРОЙКИ</button>
         <button class="btn btn-secondary" data-action="leaderboard">🏆 ТАБЛИЦА РЕКОРДОВ</button>
       </div>
@@ -251,7 +270,7 @@ function renderHowTo() {
 function renderSetup() {
   const diffs = Object.values(DIFFICULTIES);
   app.innerHTML = `
-    <section class="screen panel glass">
+    <section class="screen panel glass kids-card">
       <div class="panel-header">
         <h2>Выбор сложности</h2>
         <div class="nav-row">
@@ -262,8 +281,8 @@ function renderSetup() {
       <div class="grid-2" id="diff-grid">
         ${diffs
           .map(
-            (d) => `
-          <button class="choice-card" data-diff="${d.id}">
+            (d, i) => `
+          <button class="choice-card pop-in" style="--delay:${i * 0.05}s" data-diff="${d.id}">
             <span class="emoji">${d.emoji}</span>
             <span class="title">${d.name}</span>
             <span class="desc">${d.description}</span>
@@ -271,21 +290,26 @@ function renderSetup() {
           )
           .join('')}
       </div>
-      <h2 style="margin:22px 0 12px;font-family:var(--font-display);font-size:1.35rem">Категория</h2>
+      <h2 class="section-title">Категория</h2>
       <div class="grid-cats" id="cat-grid">
-        ${CATEGORIES.map(
-          (c) => `
-          <button class="choice-card" data-cat="${c.id}">
-            <span class="emoji">${c.emoji}</span>
+        ${CATEGORIES.map((c, i) => {
+          const media = getCategoryMedia(c.id);
+          return `
+          <button class="choice-card cat-card pop-in" style="--delay:${0.15 + i * 0.04}s" data-cat="${c.id}">
+            <span class="cat-thumb">
+              <img src="${media.url}" alt="" loading="lazy" referrerpolicy="no-referrer" />
+              <span class="emoji">${c.emoji}</span>
+            </span>
             <span class="title">${c.name}</span>
-          </button>`,
-        ).join('')}
+          </button>`;
+        }).join('')}
       </div>
       <div style="margin-top:20px">
-        <button class="btn btn-primary btn-block" id="begin-btn" disabled>▶ НАЧАТЬ ИГРУ</button>
+        <button class="btn btn-primary btn-block btn-pulse" id="begin-btn" disabled>▶ НАЧАТЬ ИГРУ</button>
       </div>
     </section>
   `;
+  bindIllustrationFade(app);
 
   let selectedDiff = null;
   let selectedCat = 'all';
@@ -337,6 +361,23 @@ function startGame(difficulty, category) {
   renderQuestion();
 }
 
+function renderTimerHtml(seconds, maxSeconds) {
+  const ratio = Math.max(0, Math.min(1, seconds / Math.max(1, maxSeconds)));
+  const offset = TIMER_CIRCUMFERENCE * (1 - ratio);
+  const label = settings.timer ? String(seconds) : '∞';
+  return `
+    <div class="timer-ring ${seconds <= 5 && settings.timer ? 'warning' : ''}" id="timer-display" aria-label="Таймер">
+      <svg viewBox="0 0 36 36" aria-hidden="true">
+        <circle class="timer-track" cx="18" cy="18" r="16"></circle>
+        <circle class="timer-progress" cx="18" cy="18" r="16"
+          stroke-dasharray="${TIMER_CIRCUMFERENCE}"
+          stroke-dashoffset="${settings.timer ? offset : 0}"></circle>
+      </svg>
+      <span class="timer-num">⏱ ${label}</span>
+    </div>
+  `;
+}
+
 function renderQuestion() {
   if (!game) return renderHome();
   stopTimer();
@@ -348,18 +389,20 @@ function renderQuestion() {
   const q = game.questions[game.currentIndex];
   const progress = ((game.currentIndex + 1) / game.questions.length) * 100;
   const questionTime = q.type === 'speed' ? 12 : TIMER_SECONDS;
+  questionTimeTotal = questionTime;
+  const visual = getQuestionVisual(q);
   const livesHtml = settings.lives
     ? `<div class="stat-pill lives">${'❤️'.repeat(Math.max(0, game.lives))}${'🖤'.repeat(Math.max(0, 3 - game.lives))}</div>`
     : '';
 
   app.innerHTML = `
-    <section class="screen game glass">
+    <section class="screen game glass kids-card screen-slide">
       <div class="hud">
         <div class="hud-left">
-          <div class="stat-pill">🏆 ${game.score}</div>
+          <div class="stat-pill score-pill">🏆 ${game.score}</div>
           ${livesHtml}
         </div>
-        <div class="stat-pill timer-pill" id="timer-display">⏱ ${settings.timer ? questionTime : '∞'}</div>
+        ${renderTimerHtml(settings.timer ? questionTime : 0, questionTime)}
         <div class="hud-right">
           <button class="btn btn-ghost btn-sm" data-action="pause">⏸</button>
           <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
@@ -369,14 +412,19 @@ function renderQuestion() {
       <div class="progress-wrap">
         <div class="progress-label">
           <span>Вопрос № ${game.currentIndex + 1} из ${game.questions.length}</span>
-          <span>🔥 серия: ${game.streak}</span>
+          <span class="streak-chip">🔥 серия: ${game.streak}</span>
         </div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill" style="width:${lastProgressWidth}%"></div>
+        </div>
       </div>
 
       <div class="question-card glass" id="q-card">
-        <div class="type-badge">${TYPE_EMOJI[q.type] || '🧬'} ${getTypeLabel(q.type)}</div>
-        ${q.image ? `<div class="question-image">${q.image}</div>` : ''}
+        <div class="question-meta">
+          <div class="type-badge">${TYPE_EMOJI[q.type] || '🧬'} ${getTypeLabel(q.type)}</div>
+          <div class="cat-chip">${visual.emoji} ${escapeHtml(visual.categoryLabel)}</div>
+        </div>
+        ${renderIllustrationHtml({ emoji: visual.emoji, url: visual.url, alt: visual.categoryLabel })}
         <div class="question-text">${escapeHtml(q.question)}</div>
         <div class="answers" id="answers"></div>
         <div class="hints">
@@ -385,9 +433,17 @@ function renderQuestion() {
           <button class="btn btn-secondary btn-sm hint-btn" data-hint="time" ${game.hints.time && settings.timer ? '' : 'disabled'}>⏱ +10 СЕК</button>
         </div>
         <div id="feedback-slot"></div>
+        <div class="burst-layer" id="burst-layer" aria-hidden="true"></div>
       </div>
     </section>
   `;
+
+  bindIllustrationFade(app);
+  requestAnimationFrame(() => {
+    const fill = app.querySelector('#progress-fill');
+    if (fill) fill.style.width = `${progress}%`;
+    lastProgressWidth = progress;
+  });
 
   renderAnswers(q);
 
@@ -427,7 +483,7 @@ function renderAnswers(q) {
     .map((answer, i) => {
       const hidden = game.removedAnswers.includes(i);
       return `
-        <button class="answer-btn ${hidden ? 'dimmed' : ''}" data-index="${i}" ${hidden || answeringLocked ? 'disabled' : ''}>
+        <button class="answer-btn answer-pop ${hidden ? 'dimmed' : ''}" style="--delay:${i * 0.07}s" data-index="${i}" ${hidden || answeringLocked ? 'disabled' : ''}>
           <span class="letter">${LETTERS[i] || i + 1}</span>
           <span>${escapeHtml(answer)}</span>
         </button>`;
@@ -437,6 +493,7 @@ function renderAnswers(q) {
   box.querySelectorAll('.answer-btn').forEach((btn) => {
     btn.onclick = () => {
       if (answeringLocked || game.paused) return;
+      btn.classList.add('pressed');
       selectAnswer(Number(btn.dataset.index));
     };
   });
@@ -445,8 +502,14 @@ function renderAnswers(q) {
 function updateTimerUI() {
   const el = app.querySelector('#timer-display');
   if (!el) return;
-  el.textContent = `⏱ ${timerLeft}`;
-  el.classList.toggle('warning', timerLeft <= 5);
+  const num = el.querySelector('.timer-num');
+  const ring = el.querySelector('.timer-progress');
+  if (num) num.textContent = `⏱ ${timerLeft}`;
+  if (ring && settings.timer) {
+    const ratio = Math.max(0, Math.min(1, timerLeft / Math.max(1, questionTimeTotal)));
+    ring.style.strokeDashoffset = String(TIMER_CIRCUMFERENCE * (1 - ratio));
+  }
+  el.classList.toggle('warning', settings.timer && timerLeft <= 5);
 }
 
 function onTimerTick() {
@@ -532,10 +595,14 @@ function selectAnswer(index) {
 
   const card = app.querySelector('#q-card');
   if (isCorrect) {
-    card?.classList.add('flash-ok');
+    card?.classList.add('flash-ok', 'glow-success');
     handleCorrect(elapsed);
+    if (settings.animations) {
+      launchStars(card?.querySelector('#burst-layer') || card);
+      launchMiniConfetti();
+    }
   } else {
-    card?.classList.add('flash-bad');
+    card?.classList.add('flash-bad', 'shake');
     handleWrong(q, false);
   }
 
@@ -708,7 +775,8 @@ function handleTimeout() {
     if (Number(btn.dataset.index) === q.correctAnswer) btn.classList.add('correct');
   });
 
-  app.querySelector('#q-card')?.classList.add('flash-bad');
+  const card = app.querySelector('#q-card');
+  card?.classList.add('flash-bad', 'shake');
   app.querySelectorAll('[data-hint]').forEach((btn) => {
     btn.disabled = true;
   });
@@ -764,21 +832,54 @@ function finishGame() {
   renderResults({ accuracy, avgTime });
 }
 
+function getResultBadges({ accuracy, avgTime }) {
+  const badges = [];
+  if (accuracy >= 90) badges.push({ emoji: '🧬', title: 'Гений биологии', desc: '90%+ правильных' });
+  else if (accuracy >= 75) badges.push({ emoji: '🔬', title: 'Отличный результат', desc: 'Отличная точность' });
+  else if (accuracy >= 50) badges.push({ emoji: '🌱', title: 'Хороший старт', desc: 'Продолжай учиться' });
+  else badges.push({ emoji: '🧪', title: 'Юный исследователь', desc: 'Новое путешествие впереди' });
+
+  if (game.maxStreak >= 5) badges.push({ emoji: '🔥', title: 'Огненная серия', desc: `${game.maxStreak} подряд` });
+  if (game.score >= 1000) badges.push({ emoji: '🏆', title: 'Тысячник', desc: `${game.score} очков` });
+  if (Number(avgTime) > 0 && Number(avgTime) <= 5) badges.push({ emoji: '⚡', title: 'Молния', desc: 'Быстрые ответы' });
+  if (game.difficulty === 'expert') badges.push({ emoji: '👑', title: 'Эксперт', desc: 'Сложный режим' });
+  if (game.correct === game.questions.length) badges.push({ emoji: '💯', title: 'Идеально', desc: 'Все ответы верны' });
+  return badges.slice(0, 4);
+}
+
 function renderResults({ accuracy, avgTime }) {
   const rank = getRankTitle(accuracy);
+  const badges = getResultBadges({ accuracy, avgTime });
+  const supabaseHint = isSupabaseEnabled()
+    ? '<p class="sync-hint">☁️ Результат можно отправить в облако Supabase</p>'
+    : '<p class="sync-hint">💾 Рекорд сохранится на этом устройстве</p>';
+
   app.innerHTML = `
-    <section class="screen results glass">
-      <div class="trophy">🎉</div>
+    <section class="screen results glass kids-card screen-slide">
+      <div class="trophy bounce-soft">🎉</div>
       <h2>КВИЗ ЗАВЕРШЁН!</h2>
-      <div class="rank-title">${rank}</div>
-      <div class="stats-grid">
-        <div class="stat-card"><div class="label">🏆 Итоговый счёт</div><div class="value">${game.score}</div></div>
-        <div class="stat-card"><div class="label">✅ Правильных</div><div class="value">${game.correct}</div></div>
-        <div class="stat-card"><div class="label">❌ Неправильных</div><div class="value">${game.wrong}</div></div>
-        <div class="stat-card"><div class="label">🎯 Точность</div><div class="value">${accuracy}%</div></div>
-        <div class="stat-card"><div class="label">⏱ Среднее время</div><div class="value">${avgTime} с</div></div>
-        <div class="stat-card"><div class="label">🔥 Макс. серия</div><div class="value">${game.maxStreak}</div></div>
+      <div class="rank-title pop-badge">${rank}</div>
+      <div class="badges-row">
+        ${badges
+          .map(
+            (b, i) => `
+          <div class="result-badge pop-in" style="--delay:${0.15 + i * 0.12}s">
+            <span class="result-badge-emoji">${b.emoji}</span>
+            <strong>${b.title}</strong>
+            <span>${b.desc}</span>
+          </div>`,
+          )
+          .join('')}
       </div>
+      <div class="stats-grid">
+        <div class="stat-card result-card pop-in" style="--delay:0.2s"><div class="label">🏆 Итоговый счёт</div><div class="value count-up" data-count="${game.score}">0</div></div>
+        <div class="stat-card result-card pop-in" style="--delay:0.28s"><div class="label">✅ Правильных</div><div class="value count-up" data-count="${game.correct}">0</div></div>
+        <div class="stat-card result-card pop-in" style="--delay:0.36s"><div class="label">❌ Неправильных</div><div class="value count-up" data-count="${game.wrong}">0</div></div>
+        <div class="stat-card result-card pop-in" style="--delay:0.44s"><div class="label">🎯 Точность</div><div class="value"><span class="count-up" data-count="${accuracy}">0</span>%</div></div>
+        <div class="stat-card result-card pop-in" style="--delay:0.52s"><div class="label">⏱ Среднее время</div><div class="value">${avgTime} с</div></div>
+        <div class="stat-card result-card pop-in" style="--delay:0.6s"><div class="label">🔥 Макс. серия</div><div class="value count-up" data-count="${game.maxStreak}">0</div></div>
+      </div>
+      ${supabaseHint}
       <div class="name-form">
         <input id="player-name" maxlength="20" placeholder="Твоё имя" value="${escapeHtml(profile.name)}" />
         <button class="btn btn-primary" id="save-score">💾 Сохранить рекорд</button>
@@ -791,23 +892,46 @@ function renderResults({ accuracy, avgTime }) {
     </section>
   `;
 
+  animateCountUps(app);
+  lastProgressWidth = 0;
+
   let savedOnce = false;
-  app.querySelector('#save-score').onclick = () => {
+  app.querySelector('#save-score').onclick = async () => {
     playClick();
     const name = app.querySelector('#player-name').value.trim() || 'Игрок';
     profile.name = name;
     saveProfile(profile);
-    if (!savedOnce) {
-      addLeaderboardEntry({
-        name,
-        score: game.score,
-        accuracy,
-        difficulty: game.difficulty,
-      });
-      savedOnce = true;
+    if (savedOnce) return;
+
+    const btn = app.querySelector('#save-score');
+    btn.disabled = true;
+    btn.textContent = '⏳ Сохраняем…';
+
+    addLeaderboardEntry({
+      name,
+      score: game.score,
+      accuracy,
+      difficulty: game.difficulty,
+    });
+
+    const remote = await saveScoreToSupabase({
+      name,
+      score: game.score,
+      accuracy,
+      difficulty: game.difficulty,
+      maxStreak: game.maxStreak,
+    });
+
+    savedOnce = true;
+    if (remote.skipped) {
       toast('🏆 Результат сохранён!');
-      app.querySelector('#save-score').textContent = '✓ Сохранено';
-      app.querySelector('#save-score').disabled = true;
+      btn.textContent = '✓ Сохранено';
+    } else if (remote.ok) {
+      toast('☁️ Результат отправлен в Supabase!');
+      btn.textContent = '✓ В облаке';
+    } else {
+      toast('🏆 Сохранено локально (облако недоступно)');
+      btn.textContent = '✓ Локально';
     }
   };
 
@@ -825,10 +949,30 @@ function renderResults({ accuracy, avgTime }) {
   };
 }
 
-function renderLeaderboard() {
-  const list = getLeaderboard();
+function animateCountUps(root) {
+  root.querySelectorAll('.count-up').forEach((el) => {
+    const target = Number(el.dataset.count) || 0;
+    const duration = 900;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - t) ** 3;
+      el.textContent = String(Math.round(target * eased));
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+async function renderLeaderboard() {
+  let list = getLeaderboard();
+  const remote = await fetchLeaderboardFromSupabase(10);
+  if (remote?.length) {
+    list = remote;
+  }
+
   app.innerHTML = `
-    <section class="screen panel glass">
+    <section class="screen panel glass kids-card">
       <div class="panel-header">
         <h2>🏆 Таблица рекордов</h2>
         <div class="nav-row">
@@ -842,7 +986,7 @@ function renderLeaderboard() {
               ${list
                 .map(
                   (item, i) => `
-                <div class="list-item">
+                <div class="list-item pop-in" style="--delay:${i * 0.06}s">
                   <div class="rank">${i + 1}</div>
                   <div class="meta">
                     <strong>${escapeHtml(item.name)}</strong>
@@ -1064,10 +1208,10 @@ function confirmRestart() {
   });
 }
 
-/* ===== Confetti ===== */
+/* ===== Confetti / stars ===== */
 function launchConfetti() {
-  const colors = ['#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#fbbf24', '#f97316'];
-  for (let i = 0; i < 48; i++) {
+  const colors = ['#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#fbbf24', '#f97316', '#fb7185'];
+  for (let i = 0; i < 56; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
     piece.style.left = `${Math.random() * 100}%`;
@@ -1077,6 +1221,45 @@ function launchConfetti() {
     piece.style.transform = `rotate(${Math.random() * 360}deg)`;
     confettiContainer.appendChild(piece);
     setTimeout(() => piece.remove(), 5000);
+  }
+}
+
+function launchMiniConfetti() {
+  const colors = ['#34d399', '#22d3ee', '#fbbf24', '#f472b6', '#a78bfa'];
+  for (let i = 0; i < 18; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece mini';
+    piece.style.left = `${30 + Math.random() * 40}%`;
+    piece.style.top = '35%';
+    piece.style.setProperty('--bx', String(Math.random()));
+    piece.style.background = colors[i % colors.length];
+    piece.style.animationDuration = `${1.2 + Math.random()}s`;
+    confettiContainer.appendChild(piece);
+    setTimeout(() => piece.remove(), 2200);
+  }
+}
+
+function launchStars(container) {
+  if (!container || !settings.animations) return;
+  const icons = ['⭐', '✨', '🌟', '💫', '🎉'];
+  for (let i = 0; i < 10; i++) {
+    const star = document.createElement('span');
+    star.className = 'burst-star';
+    star.textContent = icons[i % icons.length];
+    const angle = (Math.PI * 2 * i) / 10;
+    const dist = 60 + Math.random() * 50;
+    star.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+    star.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+    star.style.animationDelay = `${i * 0.03}s`;
+    container.appendChild(star);
+    setTimeout(() => star.remove(), 1200);
+  }
+  if (fxLayer) {
+    fxLayer.classList.remove('screen-glow');
+    // reflow for re-trigger
+    void fxLayer.offsetWidth;
+    fxLayer.classList.add('screen-glow');
+    setTimeout(() => fxLayer.classList.remove('screen-glow'), 700);
   }
 }
 
