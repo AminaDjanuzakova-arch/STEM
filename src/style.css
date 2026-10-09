@@ -1690,6 +1690,24 @@ body.no-anim * {
   gap: 12px;
 }
 
+.join-home {
+  max-width: 400px;
+  margin: 0 auto 8px;
+  text-align: left;
+}
+
+.session-join-url {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  word-break: break-all;
+  margin: 0 0 12px;
+}
+
+.session-join-url code {
+  font-size: 0.8rem;
+}
+
 .student-join-form label,
 .teacher-create label {
   display: grid;

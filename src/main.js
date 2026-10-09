@@ -40,7 +40,6 @@ import {
   getSessionByCode,
   saveQuizResult,
 } from './supabase.js';
-import { mountTeacher, unmountTeacher } from './teacher.js';
 
 const QUESTIONS_PER_GAME = 15;
 const TIMER_SECONDS = 20;
@@ -98,48 +97,25 @@ document.addEventListener(
   { once: true },
 );
 
-window.addEventListener('hashchange', () => routeFromHash());
-routeFromHash();
-
-function parseHash() {
-  const raw = (location.hash || '#/').replace(/^#/, '') || '/';
-  const [pathPart, query = ''] = raw.split('?');
-  const path = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
-  const params = Object.fromEntries(new URLSearchParams(query));
-  return { path, params };
+/** Код сессии из ?code= или #code= (QR / прямая ссылка) */
+function getCodeFromUrl() {
+  const fromQuery = new URLSearchParams(location.search).get('code');
+  if (fromQuery && /^\d{4}$/.test(fromQuery.trim())) return fromQuery.trim();
+  const hash = (location.hash || '').replace(/^#/, '');
+  if (/^\d{4}$/.test(hash)) return hash;
+  const hashParams = new URLSearchParams(hash.includes('=') ? hash : hash.replace(/^\?/, ''));
+  const fromHash = hashParams.get('code');
+  if (fromHash && /^\d{4}$/.test(fromHash.trim())) return fromHash.trim();
+  return '';
 }
 
-function routeFromHash() {
-  stopTimer();
-  unmountTeacher();
-  const { path, params } = parseHash();
-
-  if (path.startsWith('/teacher')) {
-    mountTeacher(app, {
-      toast,
-      goHome: () => {
-        location.hash = '#/';
-      },
-    });
-    return;
-  }
-
-  if (path.startsWith('/student')) {
-    if (params.code) {
-      renderStudentJoin(params.code);
-    } else {
-      renderStudentJoin('');
-    }
-    return;
-  }
-
-  // Главная / портал ролей
-  const saved = loadSavedGame();
-  if (saved && saved.questions?.length && saved.currentIndex < saved.questions.length && !params.fresh) {
-    showResumeModal(saved);
-  } else {
-    renderHome();
-  }
+// Сайт ученика: только вход по коду + квиз (без панели учителя)
+const saved = loadSavedGame();
+const urlCode = getCodeFromUrl();
+if (saved && saved.questions?.length && saved.currentIndex < saved.questions.length && !urlCode) {
+  showResumeModal(saved);
+} else {
+  renderStudentJoin(urlCode);
 }
 
 /* ===== Particles background ===== */
@@ -259,105 +235,43 @@ function logAnswer({ q, selectedIndex, elapsed, isCorrect, isTimeout }) {
   });
 }
 
-/* ===== Screens ===== */
+/* ===== Screens (только сайт ученика) ===== */
 function renderHome() {
+  renderStudentJoin(getCodeFromUrl());
+}
+
+function renderStudentJoin(prefillCode = '') {
   stopTimer();
-  unmountTeacher();
   pendingScreen = null;
   lastProgressWidth = 0;
   sessionContext = null;
+  const codeValue = prefillCode || getCodeFromUrl();
+
   app.innerHTML = `
     <section class="screen home glass kids-card">
       <div class="logo-mark bounce-soft" aria-hidden="true">🧬</div>
       <div class="brand">BIO QUIZ</div>
       <p class="kids-tagline">Путешествие в мир биологии</p>
       <h1>Проверь свои знания о живом мире!</h1>
-      <p class="subtitle">Выбери роль: ученик проходит квиз, учитель ведёт сессию класса.</p>
+      <p class="subtitle">Введи имя и код сессии — и начинай игру!</p>
       <div class="home-mascots" aria-hidden="true">
         <span>🦊</span><span>🌿</span><span>🔬</span><span>🦋</span><span>🐠</span>
       </div>
-      <div class="role-grid">
-        <button class="role-card student-role" data-action="student">
-          <span class="role-emoji">🎒</span>
-          <span class="role-title">Я ученик</span>
-          <span class="role-desc">Войти по коду сессии и пройти квиз</span>
-        </button>
-        <button class="role-card teacher-role" data-action="teacher">
-          <span class="role-emoji">👩‍🏫</span>
-          <span class="role-title">Я учитель</span>
-          <span class="role-desc">Создать сессию, QR и смотреть результаты</span>
-        </button>
-      </div>
-      <div class="home-actions" style="margin-top:16px">
-        <button class="btn btn-secondary" data-action="solo">▶ Играть без сессии</button>
-        <button class="btn btn-secondary" data-action="settings">⚙ НАСТРОЙКИ</button>
-        <button class="btn btn-secondary" data-action="leaderboard">🏆 ТАБЛИЦА РЕКОРДОВ</button>
-      </div>
-      <div class="home-links">
-        <button class="btn btn-ghost btn-sm" data-action="profile">👤 Профиль</button>
-        <button class="btn btn-ghost btn-sm" data-action="how">ℹ️ Как играть</button>
-      </div>
-    </section>
-  `;
-
-  app.querySelector('[data-action="student"]').onclick = () => {
-    playClick();
-    location.hash = '#/student';
-  };
-  app.querySelector('[data-action="teacher"]').onclick = () => {
-    playClick();
-    location.hash = '#/teacher';
-  };
-  app.querySelector('[data-action="solo"]').onclick = () => {
-    playClick();
-    sessionContext = null;
-    renderSetup();
-  };
-  app.querySelector('[data-action="settings"]').onclick = () => {
-    playClick();
-    renderSettings();
-  };
-  app.querySelector('[data-action="leaderboard"]').onclick = () => {
-    playClick();
-    renderLeaderboard();
-  };
-  app.querySelector('[data-action="profile"]').onclick = () => {
-    playClick();
-    renderProfile();
-  };
-  app.querySelector('[data-action="how"]').onclick = () => {
-    playClick();
-    renderHowTo();
-  };
-}
-
-function renderStudentJoin(prefillCode = '') {
-  stopTimer();
-  unmountTeacher();
-  app.innerHTML = `
-    <section class="screen panel glass kids-card">
-      <div class="panel-header">
-        <h2>🎒 Вход ученика</h2>
-        <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
-      </div>
-      <p class="teacher-lead">Введи имя и 4-значный код сессии от учителя — или открой ссылку/QR.</p>
-      <div class="student-join-form">
-        <label>Имя / никнейм
-          <input id="student-name" maxlength="20" placeholder="Например, Саша" value="${escapeHtml(profile.name === 'Игрок' ? '' : profile.name)}" />
+      <div class="student-join-form join-home">
+        <label>Твоё имя
+          <input id="student-name" maxlength="20" placeholder="Например, Саша" value="${escapeHtml(profile.name === 'Игрок' ? '' : profile.name)}" autocomplete="nickname" />
         </label>
         <label>Код сессии
-          <input id="session-code" inputmode="numeric" maxlength="4" placeholder="4821" value="${escapeHtml(prefillCode || '')}" />
+          <input id="session-code" inputmode="numeric" maxlength="4" placeholder="4821" value="${escapeHtml(codeValue)}" autocomplete="one-time-code" />
         </label>
-        <button class="btn btn-primary btn-block" id="join-session">▶ ВОЙТИ В КВИЗ</button>
+        <button class="btn btn-primary btn-block btn-pulse" id="join-session">▶ НАЧАТЬ КВИЗ</button>
       </div>
-      <p class="sync-hint">${isSupabaseEnabled() ? '☁️ Результаты уйдут учителю в Supabase' : '💾 Локальный режим: учитель увидит результат на этом устройстве / вкладке'}</p>
+      <div class="home-links">
+        <button class="btn btn-ghost btn-sm" data-action="how">ℹ️ Как играть</button>
+        <button class="btn btn-ghost btn-sm" data-action="settings">🔊 Звук и тема</button>
+      </div>
     </section>
   `;
-
-  app.querySelector('[data-action="home"]').onclick = () => {
-    playClick();
-    location.hash = '#/';
-  };
 
   const join = async () => {
     playClick();
@@ -377,9 +291,9 @@ function renderStudentJoin(prefillCode = '') {
     try {
       const session = await getSessionByCode(code);
       if (!session) {
-        toast('❌ Сессия не найдена или закрыта');
+        toast('❌ Такой код не найден. Проверь цифры!');
         btn.disabled = false;
-        btn.textContent = '▶ ВОЙТИ В КВИЗ';
+        btn.textContent = '▶ НАЧАТЬ КВИЗ';
         return;
       }
       profile.name = name;
@@ -391,18 +305,29 @@ function renderStudentJoin(prefillCode = '') {
         category: session.category || 'all',
         title: session.title,
       };
-      toast(`✅ Добро пожаловать, ${name}!`);
+      toast(`✅ Поехали, ${name}!`);
       startGame(sessionContext.difficulty, sessionContext.category);
     } catch (err) {
       toast(`❌ ${err.message || 'Ошибка входа'}`);
       btn.disabled = false;
-      btn.textContent = '▶ ВОЙТИ В КВИЗ';
+      btn.textContent = '▶ НАЧАТЬ КВИЗ';
     }
   };
 
   app.querySelector('#join-session').onclick = join;
   app.querySelector('#session-code').onkeydown = (e) => {
     if (e.key === 'Enter') join();
+  };
+  app.querySelector('#student-name').onkeydown = (e) => {
+    if (e.key === 'Enter') join();
+  };
+  app.querySelector('[data-action="how"]').onclick = () => {
+    playClick();
+    renderHowTo();
+  };
+  app.querySelector('[data-action="settings"]').onclick = () => {
+    playClick();
+    renderSettings();
   };
 }
 
@@ -414,15 +339,15 @@ function renderHowTo() {
         <button class="btn btn-ghost btn-sm" data-action="home">🏠 Главная</button>
       </div>
       <div class="list">
+        <div class="list-item"><div class="meta"><strong>Код сессии</strong><span>Введи имя и 4 цифры кода — и игра начнётся</span></div></div>
         <div class="list-item"><div class="meta"><strong>15 вопросов</strong><span>Случайный набор без повторов в одной игре</span></div></div>
-        <div class="list-item"><div class="meta"><strong>⏱ 20 секунд</strong><span>Успей ответить — за скорость есть бонус</span></div></div>
-        <div class="list-item"><div class="meta"><strong>🔥 Серии и комбо</strong><span>Правильные ответы подряд дают множители</span></div></div>
+        <div class="list-item"><div class="meta"><strong>⏱ Таймер и очки</strong><span>Успей ответить — за скорость и серии есть бонусы</span></div></div>
         <div class="list-item"><div class="meta"><strong>💡 Подсказки</strong><span>50/50, подсказка по теме и +10 секунд — по одному разу</span></div></div>
-        <div class="list-item"><div class="meta"><strong>❤️ Жизни</strong><span>Можно отключить в настройках и дойти до конца</span></div></div>
+        <div class="list-item"><div class="meta"><strong>🎉 В конце</strong><span>Салют, бейджи и автоматическая отправка результата</span></div></div>
         <div class="list-item"><div class="meta"><strong>📚 Факты</strong><span>После ответа читай биологическое объяснение</span></div></div>
       </div>
       <div style="margin-top:18px">
-        <button class="btn btn-primary btn-block" data-action="start">▶ НАЧАТЬ</button>
+        <button class="btn btn-primary btn-block" data-action="start">▶ К ВХОДУ</button>
       </div>
     </section>
   `;
@@ -432,7 +357,7 @@ function renderHowTo() {
   };
   app.querySelector('[data-action="start"]').onclick = () => {
     playClick();
-    renderSetup();
+    renderHome();
   };
 }
 
@@ -1025,10 +950,8 @@ function renderResults({ accuracy, avgTime }) {
   const defaultName = game.studentName || sessionContext?.studentName || profile.name;
   const totalTime = game.answerTimes.reduce((a, b) => a + b, 0);
   const supabaseHint = inSession
-    ? `<p class="sync-hint">📡 Сессия <strong>${escapeHtml(game.sessionCode || sessionContext.code)}</strong> — результат и лог ответов уйдут учителю</p>`
-    : isSupabaseEnabled()
-      ? '<p class="sync-hint">☁️ Результат можно отправить в облако Supabase</p>'
-      : '<p class="sync-hint">💾 Рекорд сохранится на этом устройстве</p>';
+    ? `<p class="sync-hint">📡 Сессия <strong>${escapeHtml(game.sessionCode || sessionContext.code)}</strong> — результат отправится автоматически</p>`
+    : '<p class="sync-hint">💾 Результат сохранится после нажатия кнопки</p>';
 
   app.innerHTML = `
     <section class="screen results glass kids-card screen-slide">
@@ -1058,7 +981,7 @@ function renderResults({ accuracy, avgTime }) {
       ${supabaseHint}
       <div class="name-form">
         <input id="player-name" maxlength="20" placeholder="Твоё имя" value="${escapeHtml(defaultName)}" ${inSession ? 'readonly' : ''} />
-        <button class="btn btn-primary" id="save-score">${inSession ? '📡 Отправить учителю' : '💾 Сохранить рекорд'}</button>
+        <button class="btn btn-primary" id="save-score">${inSession ? '📡 Отправить результат' : '💾 Сохранить рекорд'}</button>
       </div>
       <div class="results-actions">
         <button class="btn btn-primary" data-action="again">🔄 Ещё раз</button>
@@ -1119,7 +1042,7 @@ function renderResults({ accuracy, avgTime }) {
 
     savedOnce = true;
     if (inSession) {
-      toast('📡 Результат и лог ответов отправлены учителю!');
+      toast('📡 Результат отправлен!');
       btn.textContent = '✓ Отправлено';
     } else if (remote.ok) {
       toast('🏆 Результат сохранён!');
@@ -1145,7 +1068,7 @@ function renderResults({ accuracy, avgTime }) {
     if (sessionContext?.code) {
       startGame(sessionContext.difficulty, sessionContext.category);
     } else {
-      renderSetup();
+      renderHome();
     }
   };
   app.querySelector('[data-action="leaderboard"]').onclick = () => {
@@ -1154,7 +1077,6 @@ function renderResults({ accuracy, avgTime }) {
   };
   app.querySelector('[data-action="home"]').onclick = () => {
     playClick();
-    location.hash = '#/';
     renderHome();
   };
 }
@@ -1366,7 +1288,6 @@ function showResumeModal(saved) {
         onClick: () => {
           clearSavedGame();
           closeModal();
-          location.hash = '#/';
           renderHome();
         },
       },

@@ -1,15 +1,26 @@
-# 🧬 BIO QUIZ — Путешествие в мир биологии
+# 🧬 BIO QUIZ — два отдельных сайта
 
-Интерактивный образовательный квиз по биологии для школьников.  
-Два интерфейса: **Ученик** и **Учитель** (сессии, QR, realtime-лидерборд, аналитика).
+Интерактивный квиз по биологии: **сайт ученика** и **сайт учителя** — разные HTML-страницы, без общего экрана выбора роли.
 
-## Возможности
+## Сайты
 
-- Интерфейс ученика: имя + 4-значный код сессии / ссылка / QR
-- Панель учителя: PIN, создание сессий, QR, таблица лидеров, карточка ученика
-- 136 вопросов, 4 сложности, 10 категорий, анимации и детский UI
-- Детальный лог ответов (верно/ошибка + правильный ответ)
-- localStorage fallback без Supabase; опциональная синхронизация с облаком
+| Сайт | Файл | URL |
+|------|------|-----|
+| Ученик | `index.html` | http://localhost:4321/ |
+| Учитель | `teacher.html` | http://localhost:4321/teacher.html |
+
+Ученик **не видит** ссылок и кнопок на панель учителя.
+
+### Ученик (`/`)
+- Имя + 4-значный код сессии
+- Вход по QR / ссылке `/?code=4821`
+- Полный игровой квиз (картинки, таймер, прогресс, анимации, конфетти)
+- Автоотправка результата и лога ответов
+
+### Учитель (`/teacher.html`)
+- Вход по PIN (по умолчанию `1234`)
+- Создание сессии → крупный код + QR на сайт ученика
+- LIVE-лидерборд, карточка ученика, статистика класса
 
 ## Запуск
 
@@ -18,31 +29,24 @@ npm install
 npm run dev
 ```
 
-Открой `http://localhost:4321`.
-
-- Ученик: `#/student` или `#/student?code=4821`
-- Учитель: `#/teacher` (PIN по умолчанию `1234`)
-
 ## Supabase
 
-1. Скопируй `.env.example` → `.env`
-2. Выполни SQL из `sql/schema.sql` в Supabase SQL Editor
-3. Укажи `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, опционально `VITE_TEACHER_PIN`
+1. `.env.example` → `.env`
+2. Выполни `sql/schema.sql` в Supabase
+3. `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, опционально `VITE_TEACHER_PIN`
 
-Таблицы: `quiz_sessions`, `quiz_results` (JSONB `answers`), опционально `bio_quiz_scores`.
-
-Без ключей всё работает локально (удобно для демо).
+Без ключей работает локальный fallback (удобно для демо).
 
 ## Структура
 
 ```
-index.html
+index.html          — сайт ученика
+teacher.html        — сайт учителя
 sql/schema.sql
 src/
-  main.js       — квиз ученика + роутинг
-  teacher.js    — панель учителя
-  supabase.js   — Supabase REST + local fallback
-  questions.js  — база вопросов
-  media.js      — иллюстрации
-  audio.js / storage.js / style.css
+  main.js           — ученик
+  teacher-main.js   — точка входа учителя
+  teacher.js        — панель учителя
+  supabase.js       — API + local fallback
+  questions.js, media.js, audio.js, storage.js, style.css
 ```

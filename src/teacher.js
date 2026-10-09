@@ -75,23 +75,18 @@ function renderLogin(app, deps) {
   app.innerHTML = `
     <section class="screen panel glass kids-card teacher-panel">
       <div class="panel-header">
-        <h2>👩‍🏫 Вход учителя</h2>
-        <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
+        <h2>👩‍🏫 Панель учителя</h2>
       </div>
-      <p class="teacher-lead">Введи PIN, чтобы открыть панель управления сессиями и аналитику класса.</p>
+      <p class="teacher-lead">Отдельный сайт для управления сессиями. Введи PIN для входа.</p>
       <div class="name-form teacher-login">
         <input id="teacher-pin" type="password" inputmode="numeric" maxlength="8" placeholder="PIN учителя" autocomplete="current-password" />
         <button class="btn btn-primary" id="teacher-login-btn">Войти</button>
       </div>
       <p class="sync-hint">PIN по умолчанию: <strong>1234</strong> (или VITE_TEACHER_PIN)</p>
       <p class="sync-hint">${isSupabaseEnabled() ? '☁️ Supabase подключён' : '💾 Локальный режим (без Supabase ключей)'}</p>
+      <p class="sync-hint">Сайт учеников: <code>/</code> (index.html) · этот сайт: <code>/teacher.html</code></p>
     </section>
   `;
-
-  app.querySelector('[data-action="home"]').onclick = () => {
-    playClick();
-    deps.goHome();
-  };
 
   const login = () => {
     playClick();
@@ -123,7 +118,6 @@ async function renderDashboard(app, deps) {
         <h2>👩‍🏫 Панель учителя</h2>
         <div class="nav-row">
           <button class="btn btn-ghost btn-sm" data-action="logout">Выйти</button>
-          <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
         </div>
       </div>
 
@@ -172,11 +166,6 @@ async function renderDashboard(app, deps) {
     </section>
   `;
 
-  app.querySelector('[data-action="home"]').onclick = () => {
-    playClick();
-    cleanup();
-    deps.goHome();
-  };
   app.querySelector('[data-action="logout"]').onclick = () => {
     playClick();
     setAuthed(false);
@@ -225,25 +214,25 @@ async function renderSessionLive(app, deps, session) {
       <div class="panel-header">
         <h2>📡 Сессия ${session.code}</h2>
         <div class="nav-row">
-          <button class="btn btn-ghost btn-sm" data-action="back">← Назад</button>
-          <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
+          <button class="btn btn-ghost btn-sm" data-action="back">← К сессиям</button>
         </div>
       </div>
 
       <div class="session-hero">
         <div class="session-code-card glass">
-          <div class="session-code-label">Код для учеников</div>
+          <div class="session-code-label">Код для учеников (на проектор)</div>
           <div class="session-code-big">${session.code}</div>
           <div class="session-meta">${escapeHtml(session.title || '')} · ${session.status === 'active' ? 'активна' : 'закрыта'}</div>
+          <p class="session-join-url">Сайт учеников: <code>${escapeHtml(joinUrl)}</code></p>
           <div class="session-actions">
             <button class="btn btn-secondary btn-sm" id="copy-code">📋 Код</button>
-            <button class="btn btn-secondary btn-sm" id="copy-link">🔗 Ссылка</button>
+            <button class="btn btn-secondary btn-sm" id="copy-link">🔗 Ссылка ученика</button>
             ${session.status === 'active' ? '<button class="btn btn-danger btn-sm" id="close-session">Закрыть</button>' : ''}
           </div>
         </div>
         <div class="session-qr-card glass">
-          <img src="${qr}" alt="QR код сессии" width="200" height="200" class="qr-img" />
-          <p>Отсканируй QR или открой ссылку</p>
+          <img src="${qr}" alt="QR код на сайт ученика" width="200" height="200" class="qr-img" />
+          <p>QR ведёт на отдельный сайт ученика</p>
         </div>
       </div>
 
@@ -269,11 +258,6 @@ async function renderSessionLive(app, deps, session) {
     playClick();
     cleanup();
     renderDashboard(app, deps);
-  };
-  app.querySelector('[data-action="home"]').onclick = () => {
-    playClick();
-    cleanup();
-    deps.goHome();
   };
   app.querySelector('#copy-code').onclick = async () => {
     playClick();

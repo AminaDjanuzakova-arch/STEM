@@ -331,9 +331,11 @@ export function subscribeSessionResults(sessionCode, onUpdate, intervalMs = 2000
   };
 }
 
+/** Ссылка на отдельный сайт ученика (index.html), не на панель учителя */
 export function buildStudentJoinUrl(code) {
-  const base = `${window.location.origin}${window.location.pathname}`;
-  return `${base}#/student?code=${encodeURIComponent(code)}`;
+  const url = new URL('/', window.location.origin);
+  url.searchParams.set('code', String(code));
+  return url.toString();
 }
 
 export function qrImageUrl(data, size = 220) {
