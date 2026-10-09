@@ -33,7 +33,14 @@ import {
   renderIllustrationHtml,
   bindIllustrationFade,
 } from './media.js';
-import { isSupabaseEnabled, saveScoreToSupabase, fetchLeaderboardFromSupabase } from './supabase.js';
+import {
+  isSupabaseEnabled,
+  saveScoreToSupabase,
+  fetchLeaderboardFromSupabase,
+  getSessionByCode,
+  saveQuizResult,
+} from './supabase.js';
+import { mountTeacher, unmountTeacher } from './teacher.js';
 
 const QUESTIONS_PER_GAME = 15;
 const TIMER_SECONDS = 20;
@@ -53,6 +60,9 @@ let questionTimeTotal = TIMER_SECONDS;
 let settings = getSettings();
 /** @type {ReturnType<typeof getProfile>} */
 let profile = getProfile();
+
+/** Контекст классной сессии (ученик) */
+let sessionContext = null;
 
 /** Состояние текущей игры */
 let game = null;
@@ -88,11 +98,48 @@ document.addEventListener(
   { once: true },
 );
 
-const saved = loadSavedGame();
-if (saved && saved.questions?.length && saved.currentIndex < saved.questions.length) {
-  showResumeModal(saved);
-} else {
-  renderHome();
+window.addEventListener('hashchange', () => routeFromHash());
+routeFromHash();
+
+function parseHash() {
+  const raw = (location.hash || '#/').replace(/^#/, '') || '/';
+  const [pathPart, query = ''] = raw.split('?');
+  const path = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
+  const params = Object.fromEntries(new URLSearchParams(query));
+  return { path, params };
+}
+
+function routeFromHash() {
+  stopTimer();
+  unmountTeacher();
+  const { path, params } = parseHash();
+
+  if (path.startsWith('/teacher')) {
+    mountTeacher(app, {
+      toast,
+      goHome: () => {
+        location.hash = '#/';
+      },
+    });
+    return;
+  }
+
+  if (path.startsWith('/student')) {
+    if (params.code) {
+      renderStudentJoin(params.code);
+    } else {
+      renderStudentJoin('');
+    }
+    return;
+  }
+
+  // Главная / портал ролей
+  const saved = loadSavedGame();
+  if (saved && saved.questions?.length && saved.currentIndex < saved.questions.length && !params.fresh) {
+    showResumeModal(saved);
+  } else {
+    renderHome();
+  }
 }
 
 /* ===== Particles background ===== */
@@ -179,32 +226,70 @@ function createGameState({ difficulty, category }) {
     continueWithoutLives: false,
     hints: { fifty: true, tip: true, time: true },
     answerTimes: [],
+    answerLog: [],
     usedQuestionIds: questions.map((q) => q.id),
     paused: false,
     finished: false,
     hadFastAnswer: false,
     feedback: null,
     removedAnswers: [],
+    sessionCode: sessionContext?.code || null,
+    studentName: sessionContext?.studentName || profile.name,
   };
+}
+
+function logAnswer({ q, selectedIndex, elapsed, isCorrect, isTimeout }) {
+  if (!game) return;
+  game.answerLog.push({
+    questionId: q.id,
+    question: q.question,
+    category: q.category,
+    selectedIndex: selectedIndex == null ? null : selectedIndex,
+    selectedText:
+      selectedIndex == null || selectedIndex < 0
+        ? isTimeout
+          ? '⏰ Время вышло'
+          : '—'
+        : q.answers[selectedIndex],
+    correctAnswer: q.correctAnswer,
+    correctText: q.answers[q.correctAnswer],
+    isCorrect: Boolean(isCorrect),
+    timeSpent: Number(elapsed.toFixed(2)),
+    timedOut: Boolean(isTimeout),
+  });
 }
 
 /* ===== Screens ===== */
 function renderHome() {
   stopTimer();
+  unmountTeacher();
   pendingScreen = null;
   lastProgressWidth = 0;
+  sessionContext = null;
   app.innerHTML = `
     <section class="screen home glass kids-card">
       <div class="logo-mark bounce-soft" aria-hidden="true">🧬</div>
       <div class="brand">BIO QUIZ</div>
       <p class="kids-tagline">Путешествие в мир биологии</p>
       <h1>Проверь свои знания о живом мире!</h1>
-      <p class="subtitle">От клетки до человека — сколько ты знаешь о биологии?</p>
+      <p class="subtitle">Выбери роль: ученик проходит квиз, учитель ведёт сессию класса.</p>
       <div class="home-mascots" aria-hidden="true">
         <span>🦊</span><span>🌿</span><span>🔬</span><span>🦋</span><span>🐠</span>
       </div>
-      <div class="home-actions">
-        <button class="btn btn-primary btn-pulse" data-action="start">▶ НАЧАТЬ КВИЗ</button>
+      <div class="role-grid">
+        <button class="role-card student-role" data-action="student">
+          <span class="role-emoji">🎒</span>
+          <span class="role-title">Я ученик</span>
+          <span class="role-desc">Войти по коду сессии и пройти квиз</span>
+        </button>
+        <button class="role-card teacher-role" data-action="teacher">
+          <span class="role-emoji">👩‍🏫</span>
+          <span class="role-title">Я учитель</span>
+          <span class="role-desc">Создать сессию, QR и смотреть результаты</span>
+        </button>
+      </div>
+      <div class="home-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" data-action="solo">▶ Играть без сессии</button>
         <button class="btn btn-secondary" data-action="settings">⚙ НАСТРОЙКИ</button>
         <button class="btn btn-secondary" data-action="leaderboard">🏆 ТАБЛИЦА РЕКОРДОВ</button>
       </div>
@@ -215,8 +300,17 @@ function renderHome() {
     </section>
   `;
 
-  app.querySelector('[data-action="start"]').onclick = () => {
+  app.querySelector('[data-action="student"]').onclick = () => {
     playClick();
+    location.hash = '#/student';
+  };
+  app.querySelector('[data-action="teacher"]').onclick = () => {
+    playClick();
+    location.hash = '#/teacher';
+  };
+  app.querySelector('[data-action="solo"]').onclick = () => {
+    playClick();
+    sessionContext = null;
     renderSetup();
   };
   app.querySelector('[data-action="settings"]').onclick = () => {
@@ -234,6 +328,81 @@ function renderHome() {
   app.querySelector('[data-action="how"]').onclick = () => {
     playClick();
     renderHowTo();
+  };
+}
+
+function renderStudentJoin(prefillCode = '') {
+  stopTimer();
+  unmountTeacher();
+  app.innerHTML = `
+    <section class="screen panel glass kids-card">
+      <div class="panel-header">
+        <h2>🎒 Вход ученика</h2>
+        <button class="btn btn-ghost btn-sm" data-action="home">🏠</button>
+      </div>
+      <p class="teacher-lead">Введи имя и 4-значный код сессии от учителя — или открой ссылку/QR.</p>
+      <div class="student-join-form">
+        <label>Имя / никнейм
+          <input id="student-name" maxlength="20" placeholder="Например, Саша" value="${escapeHtml(profile.name === 'Игрок' ? '' : profile.name)}" />
+        </label>
+        <label>Код сессии
+          <input id="session-code" inputmode="numeric" maxlength="4" placeholder="4821" value="${escapeHtml(prefillCode || '')}" />
+        </label>
+        <button class="btn btn-primary btn-block" id="join-session">▶ ВОЙТИ В КВИЗ</button>
+      </div>
+      <p class="sync-hint">${isSupabaseEnabled() ? '☁️ Результаты уйдут учителю в Supabase' : '💾 Локальный режим: учитель увидит результат на этом устройстве / вкладке'}</p>
+    </section>
+  `;
+
+  app.querySelector('[data-action="home"]').onclick = () => {
+    playClick();
+    location.hash = '#/';
+  };
+
+  const join = async () => {
+    playClick();
+    const name = app.querySelector('#student-name').value.trim();
+    const code = app.querySelector('#session-code').value.trim();
+    if (!name) {
+      toast('✍️ Введи своё имя');
+      return;
+    }
+    if (!/^\d{4}$/.test(code)) {
+      toast('🔢 Код должен быть из 4 цифр');
+      return;
+    }
+    const btn = app.querySelector('#join-session');
+    btn.disabled = true;
+    btn.textContent = '⏳ Проверяем код…';
+    try {
+      const session = await getSessionByCode(code);
+      if (!session) {
+        toast('❌ Сессия не найдена или закрыта');
+        btn.disabled = false;
+        btn.textContent = '▶ ВОЙТИ В КВИЗ';
+        return;
+      }
+      profile.name = name;
+      saveProfile(profile);
+      sessionContext = {
+        code: session.code,
+        studentName: name,
+        difficulty: session.difficulty || 'easy',
+        category: session.category || 'all',
+        title: session.title,
+      };
+      toast(`✅ Добро пожаловать, ${name}!`);
+      startGame(sessionContext.difficulty, sessionContext.category);
+    } catch (err) {
+      toast(`❌ ${err.message || 'Ошибка входа'}`);
+      btn.disabled = false;
+      btn.textContent = '▶ ВОЙТИ В КВИЗ';
+    }
+  };
+
+  app.querySelector('#join-session').onclick = join;
+  app.querySelector('#session-code').onkeydown = (e) => {
+    if (e.key === 'Enter') join();
   };
 }
 
@@ -584,6 +753,7 @@ function selectAnswer(index) {
   const elapsed = (Date.now() - questionStartedAt) / 1000;
   game.answerTimes.push(elapsed);
   const isCorrect = index === q.correctAnswer;
+  logAnswer({ q, selectedIndex: index, elapsed, isCorrect, isTimeout: false });
 
   const buttons = app.querySelectorAll('.answer-btn');
   buttons.forEach((btn) => {
@@ -769,6 +939,7 @@ function handleTimeout() {
   const q = game.questions[game.currentIndex];
   const elapsed = (Date.now() - questionStartedAt) / 1000;
   game.answerTimes.push(elapsed);
+  logAnswer({ q, selectedIndex: null, elapsed, isCorrect: false, isTimeout: true });
 
   app.querySelectorAll('.answer-btn').forEach((btn) => {
     btn.disabled = true;
@@ -850,9 +1021,14 @@ function getResultBadges({ accuracy, avgTime }) {
 function renderResults({ accuracy, avgTime }) {
   const rank = getRankTitle(accuracy);
   const badges = getResultBadges({ accuracy, avgTime });
-  const supabaseHint = isSupabaseEnabled()
-    ? '<p class="sync-hint">☁️ Результат можно отправить в облако Supabase</p>'
-    : '<p class="sync-hint">💾 Рекорд сохранится на этом устройстве</p>';
+  const inSession = Boolean(game.sessionCode || sessionContext?.code);
+  const defaultName = game.studentName || sessionContext?.studentName || profile.name;
+  const totalTime = game.answerTimes.reduce((a, b) => a + b, 0);
+  const supabaseHint = inSession
+    ? `<p class="sync-hint">📡 Сессия <strong>${escapeHtml(game.sessionCode || sessionContext.code)}</strong> — результат и лог ответов уйдут учителю</p>`
+    : isSupabaseEnabled()
+      ? '<p class="sync-hint">☁️ Результат можно отправить в облако Supabase</p>'
+      : '<p class="sync-hint">💾 Рекорд сохранится на этом устройстве</p>';
 
   app.innerHTML = `
     <section class="screen results glass kids-card screen-slide">
@@ -881,8 +1057,8 @@ function renderResults({ accuracy, avgTime }) {
       </div>
       ${supabaseHint}
       <div class="name-form">
-        <input id="player-name" maxlength="20" placeholder="Твоё имя" value="${escapeHtml(profile.name)}" />
-        <button class="btn btn-primary" id="save-score">💾 Сохранить рекорд</button>
+        <input id="player-name" maxlength="20" placeholder="Твоё имя" value="${escapeHtml(defaultName)}" ${inSession ? 'readonly' : ''} />
+        <button class="btn btn-primary" id="save-score">${inSession ? '📡 Отправить учителю' : '💾 Сохранить рекорд'}</button>
       </div>
       <div class="results-actions">
         <button class="btn btn-primary" data-action="again">🔄 Ещё раз</button>
@@ -896,13 +1072,12 @@ function renderResults({ accuracy, avgTime }) {
   lastProgressWidth = 0;
 
   let savedOnce = false;
-  app.querySelector('#save-score').onclick = async () => {
-    playClick();
-    const name = app.querySelector('#player-name').value.trim() || 'Игрок';
+
+  const persistResult = async () => {
+    if (savedOnce) return;
+    const name = app.querySelector('#player-name').value.trim() || 'Ученик';
     profile.name = name;
     saveProfile(profile);
-    if (savedOnce) return;
-
     const btn = app.querySelector('#save-score');
     btn.disabled = true;
     btn.textContent = '⏳ Сохраняем…';
@@ -914,30 +1089,64 @@ function renderResults({ accuracy, avgTime }) {
       difficulty: game.difficulty,
     });
 
-    const remote = await saveScoreToSupabase({
+    const remote = await saveQuizResult({
+      sessionCode: game.sessionCode || sessionContext?.code || null,
+      studentName: name,
       name,
       score: game.score,
       accuracy,
-      difficulty: game.difficulty,
+      correctCount: game.correct,
+      wrongCount: game.wrong,
       maxStreak: game.maxStreak,
+      avgTime: Number(avgTime),
+      totalTime: Number(totalTime.toFixed(1)),
+      difficulty: game.difficulty,
+      category: game.category,
+      answers: game.answerLog || [],
     });
 
+    // legacy cloud path for non-session
+    if (!remote.result?.session_code) {
+      await saveScoreToSupabase({
+        name,
+        score: game.score,
+        accuracy,
+        difficulty: game.difficulty,
+        maxStreak: game.maxStreak,
+        answers: game.answerLog || [],
+      });
+    }
+
     savedOnce = true;
-    if (remote.skipped) {
+    if (inSession) {
+      toast('📡 Результат и лог ответов отправлены учителю!');
+      btn.textContent = '✓ Отправлено';
+    } else if (remote.ok) {
       toast('🏆 Результат сохранён!');
       btn.textContent = '✓ Сохранено';
-    } else if (remote.ok) {
-      toast('☁️ Результат отправлен в Supabase!');
-      btn.textContent = '✓ В облаке';
     } else {
-      toast('🏆 Сохранено локально (облако недоступно)');
+      toast('🏆 Сохранено локально');
       btn.textContent = '✓ Локально';
     }
   };
 
+  app.querySelector('#save-score').onclick = async () => {
+    playClick();
+    await persistResult();
+  };
+
+  // В сессии — автоотправка учителю
+  if (inSession) {
+    setTimeout(() => persistResult(), 600);
+  }
+
   app.querySelector('[data-action="again"]').onclick = () => {
     playClick();
-    renderSetup();
+    if (sessionContext?.code) {
+      startGame(sessionContext.difficulty, sessionContext.category);
+    } else {
+      renderSetup();
+    }
   };
   app.querySelector('[data-action="leaderboard"]').onclick = () => {
     playClick();
@@ -945,6 +1154,7 @@ function renderResults({ accuracy, avgTime }) {
   };
   app.querySelector('[data-action="home"]').onclick = () => {
     playClick();
+    location.hash = '#/';
     renderHome();
   };
 }
@@ -1134,10 +1344,18 @@ function showResumeModal(saved) {
         primary: true,
         onClick: () => {
           game = saved;
+          if (!game.answerLog) game.answerLog = [];
+          if (saved.sessionCode) {
+            sessionContext = {
+              code: saved.sessionCode,
+              studentName: saved.studentName || profile.name,
+              difficulty: saved.difficulty,
+              category: saved.category,
+            };
+          }
           timerLeft = saved.timerLeft || TIMER_SECONDS;
           closeModal();
           if (game.feedback) {
-            // resume mid-feedback roughly by re-showing question flow
             game.feedback = null;
           }
           renderQuestion();
@@ -1148,6 +1366,7 @@ function showResumeModal(saved) {
         onClick: () => {
           clearSavedGame();
           closeModal();
+          location.hash = '#/';
           renderHome();
         },
       },

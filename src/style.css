@@ -1607,3 +1607,290 @@ body.no-anim * {
     min-width: 100%;
   }
 }
+
+/* ===== Roles / Teacher / Student join ===== */
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 8px 0 4px;
+}
+
+.role-card {
+  border: 2px solid var(--glass-border);
+  background: var(--glass-strong);
+  border-radius: var(--radius-sm);
+  padding: 18px 14px;
+  cursor: pointer;
+  color: var(--text);
+  font-family: var(--font);
+  text-align: center;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+
+.role-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 12px 28px rgba(6, 182, 212, 0.2);
+}
+
+.role-emoji {
+  display: block;
+  font-size: 2.2rem;
+  margin-bottom: 6px;
+}
+
+.role-title {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.role-desc {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.teacher-role:hover {
+  border-color: rgba(167, 139, 250, 0.55);
+}
+
+.teacher-panel.wide {
+  width: min(980px, 100%);
+}
+
+.teacher-lead {
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.teacher-login input,
+.student-join-form input,
+.teacher-create input,
+.teacher-create select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  color: var(--text);
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.student-join-form {
+  display: grid;
+  gap: 12px;
+}
+
+.student-join-form label,
+.teacher-create label {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  font-weight: 800;
+  font-size: 0.92rem;
+}
+
+.shake-input {
+  animation: shakeCard 0.45s ease;
+}
+
+.teacher-create {
+  padding: 16px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-sm);
+}
+
+.teacher-create h3 {
+  font-family: var(--font-display);
+  margin-bottom: 12px;
+}
+
+.teacher-create-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.session-hero {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.session-code-card,
+.session-qr-card {
+  padding: 18px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.session-code-label {
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.session-code-big {
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 8vw, 4rem);
+  letter-spacing: 0.18em;
+  background: linear-gradient(120deg, #34d399, #22d3ee, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin: 6px 0;
+}
+
+.session-meta {
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.qr-img {
+  border-radius: 16px;
+  background: #fff;
+  padding: 8px;
+  max-width: 100%;
+  height: auto;
+}
+
+.session-qr-card p {
+  margin-top: 8px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  animation: ctaPulse 1.6s ease-in-out infinite;
+}
+
+.leader-row {
+  width: 100%;
+  cursor: pointer;
+  border: none;
+  font: inherit;
+  color: inherit;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.leader-row:hover {
+  transform: translateY(-2px);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.rank.medal {
+  font-size: 1.25rem;
+  background: transparent;
+  width: auto;
+  min-width: 40px;
+}
+
+.teacher-stats .hard-q {
+  grid-column: 1 / -1;
+}
+
+.hard-q-text {
+  font-weight: 800;
+  font-size: 0.98rem;
+  margin-top: 4px;
+}
+
+.hard-q-text span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.student-card {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: var(--radius);
+}
+
+.answer-log {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.log-item {
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  text-align: left;
+}
+
+.log-item.ok {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.log-item.bad {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.log-q {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.log-a,
+.log-correct {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.log-correct {
+  color: var(--accent-green);
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .role-grid,
+  .teacher-create-grid,
+  .session-hero {
+    grid-template-columns: 1fr;
+  }
+}
