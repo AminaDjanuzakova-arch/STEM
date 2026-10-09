@@ -29,6 +29,19 @@ npm install
 npm run dev
 ```
 
+Сборка (в `dist/` появятся `index.html` и `teacher.html`):
+
+```bash
+npm run build
+```
+
+### Vercel
+
+В корне есть `vercel.json`: `buildCommand` → `npm run build`, `outputDirectory` → `dist`.  
+После деплоя:
+- ученик: `https://your-app.vercel.app/`
+- учитель: `https://your-app.vercel.app/teacher` (или `/teacher.html`)
+
 ## Supabase
 
 1. `.env.example` → `.env`
