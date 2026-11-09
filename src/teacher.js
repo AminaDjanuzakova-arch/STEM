@@ -82,9 +82,8 @@ function renderLogin(app, deps) {
         <input id="teacher-pin" type="password" inputmode="numeric" maxlength="8" placeholder="PIN учителя" autocomplete="current-password" />
         <button class="btn btn-primary" id="teacher-login-btn">Войти</button>
       </div>
-      <p class="sync-hint">PIN по умолчанию: <strong>1234</strong> (или VITE_TEACHER_PIN)</p>
-      <p class="sync-hint">${isSupabaseEnabled() ? '☁️ Supabase подключён' : '💾 Локальный режим (без Supabase ключей)'}</p>
-      <p class="sync-hint">Сайт учеников: <code>/</code> (index.html) · этот сайт: <code>/teacher.html</code></p>
+      <p class="sync-hint">PIN по умолчанию смотрите в README. Не отправляйте эту страницу ученикам.</p>
+      <p class="sync-hint">${isSupabaseEnabled() ? '☁️ Supabase подключён' : '💾 Результаты хранятся в браузере (локальный режим)'}</p>
     </section>
   `;
 

@@ -1,62 +1,62 @@
 /**
- * Иллюстрации категорий и вопросов (Unsplash CDN + emoji-fallback)
+ * Иллюстрации категорий и вопросов (локальные файлы + emoji-fallback)
  */
 
 export const CATEGORY_MEDIA = {
   all: {
     emoji: '🎲',
     label: 'Все темы',
-    url: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=720&q=80',
+    url: '/images/all.jpg',
   },
   cell: {
     emoji: '🧬',
     label: 'Клетка',
-    url: 'https://images.unsplash.com/photo-1576086213369-97a306d36557?auto=format&fit=crop&w=720&q=80',
+    url: '/images/cell.jpg',
   },
   anatomy: {
     emoji: '🫀',
     label: 'Анатомия',
-    url: 'https://images.unsplash.com/photo-1559757175-5700dde675bc?auto=format&fit=crop&w=720&q=80',
+    url: '/images/anatomy.jpg',
   },
   plants: {
     emoji: '🌱',
     label: 'Растения',
-    url: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=720&q=80',
+    url: '/images/plants.jpg',
   },
   animals: {
     emoji: '🐾',
     label: 'Животные',
-    url: 'https://images.unsplash.com/photo-1474511320723-9a56873867b5?auto=format&fit=crop&w=720&q=80',
+    url: '/images/animals.jpg',
   },
   genetics: {
     emoji: '🧪',
     label: 'Генетика',
-    url: 'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?auto=format&fit=crop&w=720&q=80',
+    url: '/images/genetics.jpg',
   },
   ecology: {
     emoji: '🌍',
     label: 'Экология',
-    url: 'https://images.unsplash.com/photo-1441974231819-48ea34aa4ad2?auto=format&fit=crop&w=720&q=80',
+    url: '/images/ecology.jpg',
   },
   microbiology: {
     emoji: '🦠',
     label: 'Микромир',
-    url: 'https://images.unsplash.com/photo-1582719471384-894fbb16e074?auto=format&fit=crop&w=720&q=80',
+    url: '/images/microbiology.jpg',
   },
   nervous: {
     emoji: '🧠',
     label: 'Нервная система',
-    url: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?auto=format&fit=crop&w=720&q=80',
+    url: '/images/nervous.jpg',
   },
   evolution: {
     emoji: '🦴',
     label: 'Эволюция',
-    url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=720&q=80',
+    url: '/images/evolution.jpg',
   },
   general: {
     emoji: '🔬',
     label: 'Общая биология',
-    url: 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?auto=format&fit=crop&w=720&q=80',
+    url: '/images/general.jpg',
   },
 };
 
@@ -79,7 +79,7 @@ export function getCategoryMedia(categoryId) {
 }
 
 /**
- * Визуал для вопроса: emoji + фото категории (или imageUrl вопроса)
+ * Визуал для вопроса: emoji + локальное фото категории
  */
 export function getQuestionVisual(question) {
   const cat = getCategoryMedia(question.category);
@@ -101,7 +101,6 @@ export function renderIllustrationHtml({ emoji, url, alt = 'Иллюстраци
         alt="${alt}"
         loading="eager"
         decoding="async"
-        referrerpolicy="no-referrer"
       />
       <div class="illustration-emoji" aria-hidden="true">${emoji}</div>
     </div>
@@ -118,9 +117,13 @@ export function bindIllustrationFade(root = document) {
       reveal();
     } else {
       img.addEventListener('load', reveal, { once: true });
-      img.addEventListener('error', () => {
-        box.classList.add('is-loaded', 'is-fallback');
-      }, { once: true });
+      img.addEventListener(
+        'error',
+        () => {
+          box.classList.add('is-loaded', 'is-fallback');
+        },
+        { once: true },
+      );
     }
   });
 }
